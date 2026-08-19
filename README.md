@@ -20,7 +20,7 @@ This project was developed as part of a Professional Bachelor's internship carri
 
 
 ## System Architecture
-![System Architecture](assets/system-architecture)
+![System Architecture](assets/system-architecture.png)
 
 The system is designed with three main zones:
 1.  **Pre-treatment:** Existing RO installation.
