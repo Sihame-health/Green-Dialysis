@@ -1,1 +1,144 @@
+#include <Arduino.h>
 
+// --- Pin Definitions ---
+// Level Sensors (Digital / Float Switches)
+const int PIN_COLLECTE_BAS  = 34; // Low level threshold for collection tank (5000L)[cite: 1]
+const int PIN_COLLECTE_HAUT = 35; // High level threshold for collection tank (5000L)[cite: 1]
+const int PIN_DISTRIB_HAUT  = 32; // High level threshold for distribution tank (6000L)[cite: 1]
+
+// Sensors & Measurements
+const int PIN_SONDE_EC      = 33; // Conductivity sensor (Analog Input)[cite: 1]
+const int PIN_BATT_VOLT     = 36; // Battery voltage monitoring (Voltage divider)[cite: 1]
+
+// Actuators (via relay module - active high/low depending on hardware configuration)
+const int PIN_RELAY_EV1     = 23; // EV1: RO reject inflow to collection tank[cite: 1]
+const int PIN_RELAY_RECYC   = 22; // EV_recyclage: Upstream recycling to RO feed[cite: 1]
+const int PIN_RELAY_EV2     = 21; // EV2: Distribution for external usages[cite: 1]
+
+// --- Configuration Thresholds ---
+const float SEUIL_CONDUCTIVITE_MAX = 2.5; // in mS/cm (Example limit to be calibrated)
+const float TENSION_CRITIQUE_BATT  = 10.5; // in Volts (Critical safety limit for 12V battery)[cite: 1]
+
+// --- System States (Grafcet) ---
+enum SystemState {
+  STATE_IDLE = 0,
+  STATE_COLLECT,
+  STATE_ARBITRATION,
+  STATE_UPSTREAM_RECYCLING,
+  STATE_DISTRIBUTION,
+  STATE_SAFETY_LOCKDOWN
+};
+
+SystemState currentState = STATE_IDLE;
+
+void setup() {
+  Serial.begin(115200);
+
+  // Configure Inputs
+  pinMode(PIN_COLLECTE_BAS, INPUT_PULLUP);
+  pinMode(PIN_COLLECTE_HAUT, INPUT_PULLUP);
+  pinMode(PIN_DISTRIB_HAUT, INPUT_PULLUP);
+  pinMode(PIN_SONDE_EC, INPUT);
+  pinMode(PIN_BATT_VOLT, INPUT);
+
+  // Configure Outputs (Relays)
+  pinMode(PIN_RELAY_EV1, OUTPUT);
+  pinMode(PIN_RELAY_RECYC, OUTPUT);
+  pinMode(PIN_RELAY_EV2, OUTPUT);
+
+  // Initial State: Close all valves (RELAIS OFF)
+  digitalWrite(PIN_RELAY_EV1, LOW);
+  digitalWrite(PIN_RELAY_RECYC, LOW);
+  digitalWrite(PIN_RELAY_EV2, LOW);
+
+  Serial.println("RO Reject Valorization System Initialized.");
+}
+
+void loop() {
+  // 1. Continuous Safety Monitoring
+  int rawBatt = analogRead(PIN_BATT_VOLT);
+  float batteryVoltage = (rawBatt / 4095.0) * 3.3 * 4.0; // Estimated factor 4 for voltage divider
+
+  if (batteryVoltage < TENSION_CRITIQUE_BATT && batteryVoltage > 1.0) {
+    currentState = STATE_SAFETY_LOCKDOWN;
+  }
+
+  // 2. State Machine (Grafcet logic)[cite: 1]
+  switch (currentState) {
+    
+    case STATE_IDLE:
+      Serial.println("[STATE 0] - Idle / Waiting[cite: 1]");
+      digitalWrite(PIN_RELAY_EV1, LOW);
+      digitalWrite(PIN_RELAY_RECYC, LOW);
+      digitalWrite(PIN_RELAY_EV2, LOW);
+
+      // Transition: If collection tank level drops below low threshold[cite: 1]
+      if (digitalRead(PIN_COLLECTE_BAS) == LOW) { 
+        currentState = STATE_COLLECT;
+      }
+      break;
+
+    case STATE_COLLECT:
+      Serial.println("[STATE 1] - Collecting reject water (Opening EV1)[cite: 1]");
+      digitalWrite(PIN_RELAY_EV1, HIGH); // Open inflow to collection
+
+      // Transition: If collection tank reaches maximum capacity (5000L)[cite: 1]
+      if (digitalRead(PIN_COLLECTE_HAUT) == HIGH) {
+        digitalWrite(PIN_RELAY_EV1, LOW);
+        currentState = STATE_ARBITRATION;
+      }
+      break;
+
+    case STATE_ARBITRATION:
+      Serial.println("[STATE 2] - Arbitration (Evaluating conductivity)[cite: 1]");
+      {
+        int rawEC = analogRead(PIN_SONDE_EC);
+        float conductivity = (rawEC / 4095.0) * 20.0; // 0-20 mS/cm scale[cite: 1]
+
+        bool distributionTankFull = (digitalRead(PIN_DISTRIB_HAUT) == HIGH);
+
+        // Transition to upstream recycling or general distribution[cite: 1]
+        if (conductivity < SEUIL_CONDUCTIVITE_MAX && !distributionTankFull) {
+          currentState = STATE_UPSTREAM_RECYCLING;
+        } else {
+          currentState = STATE_DISTRIBUTION;
+        }
+      }
+      break;
+
+    case STATE_UPSTREAM_RECYCLING:
+      Serial.println("[STATE 3] - Upstream recycling towards RO feed[cite: 1]");
+      digitalWrite(PIN_RELAY_RECYC, HIGH); // Open recycling valve
+
+      // Simulation of condition window (replace with actual RO demand trigger)
+      delay(2000); 
+      digitalWrite(PIN_RELAY_RECYC, LOW);
+      currentState = STATE_IDLE;
+      break;
+
+    case STATE_DISTRIBUTION:
+      Serial.println("[STATE 4] - Distributing to external water utilities (EV2)[cite: 1]");
+      digitalWrite(PIN_RELAY_EV2, HIGH); // Open distribution valve
+
+      // Simulation of distribution cycle completion
+      delay(3000); 
+      digitalWrite(PIN_RELAY_EV2, LOW);
+      currentState = STATE_IDLE;
+      break;
+
+    case STATE_SAFETY_LOCKDOWN:
+      Serial.println("[ALERT] - Critical battery voltage detected! Fail-safe lockdown activated[cite: 1].");
+      // Fail-Safe Mode: Shut down all valves immediately[cite: 1]
+      digitalWrite(PIN_RELAY_EV1, LOW);
+      digitalWrite(PIN_RELAY_RECYC, LOW);
+      digitalWrite(PIN_RELAY_EV2, LOW);
+      
+      // Halt execution until system is reset or recharged
+      while (true) {
+        delay(1000);
+      }
+      break;
+  }
+
+  delay(1000); // 1-second loop execution delay
+}
