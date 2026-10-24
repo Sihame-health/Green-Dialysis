@@ -30,7 +30,7 @@ The system is designed with three main zones:
 ## Key Features
 *   **Automated Control:** ESP32-based logic for autonomous valve control, conductivity monitoring, and power management.
 *   **Risk Management:** Simplified FMEA (Failure Mode and Effects Analysis) ensuring a "fail-safe" design for hospital integration.
-*   **Resource Efficiency:** Potential to recover ~6,000 L/day of water for internal facility use.
+*   **Resource Efficiency:** Potential to recover ~2,000 L/day of water for internal facility use.
 *   **Energy Resilience:** Small-scale pressure recovery for backup control system operation.
 
 ## Field measurements
